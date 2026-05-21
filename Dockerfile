@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up official Docker upstream repository GPG key and sources list
-RUN mkdir -p -m 0755 -d /etc/apt/keyrings && \
+# FIXED: Removed the invalid '-d' option from mkdir
+RUN mkdir -p -m 0755 /etc/apt/keyrings && \
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
@@ -25,9 +26,16 @@ WORKDIR /tmp
 COPY packages.txt .
 
 # 1. Update apt repositories
+# 2. Download Kernel updates and Docker CE packages
 # 3. Read packages.txt and download every single package listed in it using xargs
+# FIXED: Corrected the chaining syntax for xargs and apt-get
 RUN apt-get update && \
     apt-get install --download-only -y \
+        linux-image-virtual \
+        linux-headers-virtual \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io && \
     xargs -a packages.txt apt-get install --download-only -y
 
 # Create the final repository structure and generate indexes
