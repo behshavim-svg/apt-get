@@ -1,0 +1,71 @@
+name: 2 - Sync Chunks to ArvanCloud
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-to-s3:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the specific branch where chunks are stored
+      - name: Checkout Chunks Branch
+        uses: actions/checkout@v4
+        with:
+          ref: mirror-chunks
+
+      - name: Configure AWS CLI for ArvanCloud
+        run: |
+          mkdir -p ~/.aws
+          echo "[default]" > ~/.aws/credentials
+          echo "aws_access_key_id = ${{ secrets.ARVAN_ACCESS_KEY }}" >> ~/.aws/credentials
+          echo "aws_secret_access_key = ${{ secrets.ARVAN_SECRET_KEY }}" >> ~/.aws/credentials
+
+      - name: Upload Missing Chunks with Smart Retry
+        run: |
+          BUCKET="${{ secrets.ARVAN_BUCKET_NAME }}"
+          ENDPOINT="${{ secrets.ARVAN_ENDPOINT_URL }}"
+          MAX_RETRIES=5
+          
+          # Step 1: Get the list of chunks already uploaded to ArvanCloud S3
+          echo "Checking existing files in ArvanCloud S3..."
+          aws s3 ls s3://$BUCKET/gitlab-chunks/ --endpoint-url=$ENDPOINT | awk '{print $4}' > existing_files.txt || touch existing_files.txt
+          
+          # Step 2: Loop through all local chunk files
+          for file in gitlab-mirror.tar.part_*; do
+            
+            # If the chunk is already in the existing_files list, skip it entirely
+            if grep -q "^$file$" existing_files.txt; then
+              echo "SKIP: $file is already uploaded to ArvanCloud."
+              continue
+            fi
+            
+            echo "UPLOAD: $file is missing. Starting upload process..."
+            attempt=1
+            success=0
+            
+            # Step 3: Retry loop for each missing chunk
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "Attempt $attempt/$MAX_RETRIES for $file..."
+              
+              # Execute AWS S3 copy. If it succeeds, set success flag and break the loop
+              if aws s3 cp "$file" "s3://$BUCKET/gitlab-chunks/$file" --endpoint-url=$ENDPOINT; then
+                echo "SUCCESS: $file uploaded correctly."
+                success=1
+                break
+              else
+                echo "FAILED: Attempt $attempt for $file failed. Waiting 5 seconds before retrying..."
+                sleep 5
+                attempt=$((attempt + 1))
+              fi
+            done
+            
+            # Step 4: If all 5 attempts fail, exit the script to preserve progress for the next manual run
+            if [ $success -eq 0 ]; then
+              echo "FATAL ERROR: Could not upload $file after $MAX_RETRIES attempts."
+              echo "The workflow will stop here. You can safely run it again later."
+              exit 1
+            fi
+            
+          done
+          
+          echo "All chunks have been successfully synchronized to ArvanCloud!"
