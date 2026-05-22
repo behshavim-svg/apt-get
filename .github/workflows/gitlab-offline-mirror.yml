@@ -33,42 +33,72 @@ jobs:
           mkdir -p chunks
           split -b 10M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
 
-      # Step: Upload all chunks sequentially to Bale Messenger via Bot API
-      - name: Send Chunks to Bale Messenger
+      #- name: Upload Only Missing Chunks to Bale
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
         run: |
-          # Loop through all generated parts and upload them one by one
-          for file in chunks/gitlab-mirror.tar.part_*; do
-            echo "Uploading $file to Bale..."
+          # Maximum number of retries per chunk
+          MAX_RETRIES=5
+          
+          # Array containing exactly the 24 missing parts derived from the logs
+          MISSING_PARTS=(
+            "gitlab-mirror.tar.part_aa" "gitlab-mirror.tar.part_ab" "gitlab-mirror.tar.part_ad" 
+            "gitlab-mirror.tar.part_ae" "gitlab-mirror.tar.part_af" "gitlab-mirror.tar.part_ag" 
+            "gitlab-mirror.tar.part_ah" "gitlab-mirror.tar.part_ai" "gitlab-mirror.tar.part_aj" 
+            "gitlab-mirror.tar.part_ak" "gitlab-mirror.tar.part_al" "gitlab-mirror.tar.part_am" 
+            "gitlab-mirror.tar.part_an" "gitlab-mirror.tar.part_ap" "gitlab-mirror.tar.part_bd" 
+            "gitlab-mirror.tar.part_bi" "gitlab-mirror.tar.part_bk" "gitlab-mirror.tar.part_bl" 
+            "gitlab-mirror.tar.part_bm" "gitlab-mirror.tar.part_bn" "gitlab-mirror.tar.part_cs" 
+            "gitlab-mirror.tar.part_dr" "gitlab-mirror.tar.part_dt" "gitlab-mirror.tar.part_dy"
+          )
+          
+          for part_name in "${MISSING_PARTS[@]}"; do
+            file="chunks/$part_name"
             
-            curl -X POST "https://tapi.bale.ai/bot$BALE_TOKEN/sendDocument" \
-              -F "chat_id=$BALE_CHAT_ID" \
-              -F "document=@$file" \
-              -F "caption=Part: $(basename $file)"
+            # Check if the generated chunk actually exists
+            if [ ! -f "$file" ]; then
+              echo "WARNING: File $file does not exist! Skipping."
+              continue
+            fi
+            
+            attempt=1
+            success=0
+            
+            # Smart retry loop to handle Bale 504 and 500 errors
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "Uploading $file (Attempt $attempt/$MAX_RETRIES)..."
               
-            # Add a small delay (2 seconds) between uploads to prevent rate-limiting
+              HTTP_STATUS=$(curl -s -w "%{http_code}" -o response.json \
+                --max-time 120 \
+                -X POST "https://tapi.bale.ai/bot$BALE_TOKEN/sendDocument" \
+                -F "chat_id=$BALE_CHAT_ID" \
+                -F "document=@$file" \
+                -F "caption=Part: $(basename $file)")
+                
+              BODY=$(cat response.json)
+              
+              # Validate both HTTP status 200 and Bale's internal success flag
+              if [[ "$HTTP_STATUS" == "200" ]] && [[ "$BODY" == *"\"ok\":true"* ]]; then
+                echo "SUCCESS: $file uploaded correctly."
+                success=1
+                break
+              else
+                echo "FAILED: Attempt $attempt for $file failed."
+                echo "Waiting 5 seconds before retrying..."
+                sleep 5
+                attempt=$((attempt + 1))
+              fi
+            done
+            
+            # Abort workflow if a part critically fails 5 times
+            if [ $success -eq 0 ]; then
+              echo "FATAL ERROR: Could not upload $file after $MAX_RETRIES attempts."
+              exit 1
+            fi
+            
+            # Respect API limits between chunks
             sleep 2
           done
-
-      # Step: Configure AWS CLI for ArvanCloud
-      - name: Configure AWS Credentials
-        run: |
-          mkdir -p ~/.aws
-          echo "[default]" > ~/.aws/credentials
-          echo "aws_access_key_id = ${{ secrets.ARVAN_ACCESS_KEY }}" >> ~/.aws/credentials
-          echo "aws_secret_access_key = ${{ secrets.ARVAN_SECRET_KEY }}" >> ~/.aws/credentials
           
-      # Step: Configure AWS CLI for maximum parallelization
-      - name: Configure AWS CLI for Multipart Upload
-        run: |
-          aws configure set default.s3.multipart_threshold 50MB
-          aws configure set default.s3.multipart_chunksize 10MB
-          aws configure set default.s3.max_concurrent_requests 40
-          
-      # Step: Upload the tar file to ArvanCloud S3
-      - name: Upload to ArvanCloud S3
-        run: |
-          aws s3 cp gitlab-mirror.tar s3://${{ secrets.ARVAN_BUCKET_NAME }}/gitlab-mirror-${{ steps.get-date.outputs.date }}.tar \
-            --endpoint-url=${{ secrets.ARVAN_ENDPOINT_URL }}
+          echo "All 24 missing parts have been uploaded successfully!"
