@@ -31,7 +31,7 @@ jobs:
       - name: Split Image File
         run: |
           mkdir -p chunks
-          split -b 40M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
+          split -b 10M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
 
       # Step: Upload all chunks sequentially to Bale Messenger via Bot API
       - name: Send Chunks to Bale Messenger
