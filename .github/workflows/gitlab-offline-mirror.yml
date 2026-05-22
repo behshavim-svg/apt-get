@@ -27,6 +27,31 @@ jobs:
           file: ./gitlabDockerfile
           outputs: type=docker,dest=gitlab-mirror.tar
 
+      # Step: Split the tar file into 40MB chunks to fit Bale Bot limits
+      - name: Split Image File
+        run: |
+          mkdir -p chunks
+          split -b 40M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
+
+      # Step: Upload all chunks sequentially to Bale Messenger via Bot API
+      - name: Send Chunks to Bale Messenger
+        env:
+          BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
+        run: |
+          # Loop through all generated parts and upload them one by one
+          for file in chunks/gitlab-mirror.tar.part_*; do
+            echo "Uploading $file to Bale..."
+            
+            curl -X POST "https://tapi.bale.ai/bot$BALE_TOKEN/sendDocument" \
+              -F "chat_id=$BALE_CHAT_ID" \
+              -F "document=@$file" \
+              -F "caption=Part: $(basename $file)"
+              
+            # Add a small delay (2 seconds) between uploads to prevent rate-limiting
+            sleep 2
+          done
+
       # Step: Configure AWS CLI for ArvanCloud
       - name: Configure AWS Credentials
         run: |
