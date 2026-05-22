@@ -1,7 +1,7 @@
 # =========================================================
 # Stage 1: Create a clean sandbox and download GitLab packages
 # =========================================================
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:20.04 AS builder
 
 # Set environment variables for non-interactive apt installations
 ENV DEBIAN_FRONTEND=noninteractive
