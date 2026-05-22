@@ -1,55 +1,54 @@
-name: 1 - Build and Commit Chunks
-
-on:
-  workflow_dispatch:
-
-# Grant write permissions to allow the bot to push to the repository
-permissions:
-  contents: write
-
-jobs:
-  build-split-push:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and Export Image to Tar
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./gitlabDockerfile
-          outputs: type=docker,dest=gitlab-mirror.tar
-
-      - name: Split Image into 50MB Chunks
-        run: |
-          mkdir -p image-chunks
-          # Split the file into 45MB chunks to safely bypass GitHub's 100MB file limit
-          split -b 45M gitlab-mirror.tar image-chunks/gitlab-mirror.tar.part_
-
-      - name: Commit and Push Chunks to GitHub
+- name: Commit and Push Chunks to GitHub in Batches
         run: |
           # Configure Git user for the automated commit
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Create an orphan branch (empty history) named 'mirror-chunks' to prevent repo bloat
+          # Create an orphan branch named 'mirror-chunks' to prevent repo bloat
           git checkout --orphan mirror-chunks || git checkout mirror-chunks
           
-          # Remove old tracked files from the workspace to make room for new chunks
+          # Remove old tracked files from the workspace
           git rm -rf . || true
           
-          # Move chunks to the root directory
+          # Move chunks to the current directory
           cp -r image-chunks/* ./
           
-          # Add only the chunk files to the commit
-          git add gitlab-mirror.tar.part_*
+          # Batch push variables
+          BATCH_SIZE=5
+          COUNTER=0
+          IS_FIRST_PUSH=true
           
-          # Commit the chunks
-          git commit -m "chore: add new image chunks [skip ci]"
+          # Loop through chunks and commit them in smaller batches to avoid GitHub timeouts
+          for file in gitlab-mirror.tar.part_*; do
+            git add "$file"
+            COUNTER=$((COUNTER + 1))
+            
+            # When the batch size is reached, commit and push
+            if [ $COUNTER -eq $BATCH_SIZE ]; then
+              git commit -m "chore: add chunk batch [skip ci]"
+              
+              if [ "$IS_FIRST_PUSH" = true ]; then
+                echo "Force pushing first batch..."
+                git push -f origin mirror-chunks
+                IS_FIRST_PUSH=false
+              else
+                echo "Pushing next batch..."
+                git push origin mirror-chunks
+              fi
+              
+              # Reset counter for the next batch
+              COUNTER=0
+            fi
+          done
           
-          # Force push to the mirror-chunks branch
-          git push -f origin mirror-chunks
+          # Commit and push any remaining files that didn't fill the last batch
+          if [ $COUNTER -gt 0 ]; then
+            git commit -m "chore: add remaining chunks [skip ci]"
+            if [ "$IS_FIRST_PUSH" = true ]; then
+              git push -f origin mirror-chunks
+            else
+              git push origin mirror-chunks
+            fi
+          fi
+          
+          echo "All chunks have been pushed to GitHub successfully!"
