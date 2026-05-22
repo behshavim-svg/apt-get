@@ -34,6 +34,7 @@ jobs:
           split -b 10M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
 
       #- name: Upload Only Missing Chunks to Bale
+      - name: Upload Only Missing Chunks to Bale
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
