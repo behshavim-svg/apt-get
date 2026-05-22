@@ -1,0 +1,43 @@
+name: Build and Push GitLab Offline APT Mirror
+
+# Trigger the workflow manually via the GitHub UI
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Get current date in YYYYMMDD format for tagging
+      - name: Get Current Date
+        id: get-date
+        run: echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      # Step 3: Set up Docker Buildx for advanced caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 4: Log in to Docker Hub using repository secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Step 5: Build the image and push it with GitLab-specific tags
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./gitlabDockerfile
+          push: true
+          tags: | 
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.DOCKERHUB_REPO }}:gitlab-17.4-to-18.11.3-${{ steps.get-date.outputs.date }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.DOCKERHUB_REPO }}:gitlab-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
