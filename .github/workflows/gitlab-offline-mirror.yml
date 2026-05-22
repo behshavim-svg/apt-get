@@ -34,7 +34,14 @@ jobs:
           echo "[default]" > ~/.aws/credentials
           echo "aws_access_key_id = ${{ secrets.ARVAN_ACCESS_KEY }}" >> ~/.aws/credentials
           echo "aws_secret_access_key = ${{ secrets.ARVAN_SECRET_KEY }}" >> ~/.aws/credentials
-
+          
+      # Step: Configure AWS CLI for maximum parallelization
+      - name: Configure AWS CLI for Multipart Upload
+        run: |
+          aws configure set default.s3.multipart_threshold 50MB
+          aws configure set default.s3.multipart_chunksize 10MB
+          aws configure set default.s3.max_concurrent_requests 40
+          
       # Step: Upload the tar file to ArvanCloud S3
       - name: Upload to ArvanCloud S3
         run: |
