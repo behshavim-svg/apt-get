@@ -1,0 +1,49 @@
+# =========================================================
+# Stage 1: Create a clean sandbox and download GitLab packages
+# =========================================================
+FROM ubuntu:24.04 AS builder
+
+# Set environment variables for non-interactive apt installations
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base tools required for setting up repositories and generating indexes
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    gnupg \
+    apt-utils \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add the official GitLab CE repository
+RUN curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+
+# Download specific GitLab CE versions required for the upgrade path
+# Using --download-only to cache the .deb files without installing them
+RUN apt-get update && \
+    apt-get install --download-only -y \
+        gitlab-ce=17.5.5-ce.0 \
+        gitlab-ce=17.8.7-ce.0 \
+        gitlab-ce=17.11.7-ce.0 \
+        gitlab-ce=18.2.8-ce.0 \
+        gitlab-ce=18.5.5-ce.0 \
+        gitlab-ce=18.8.9-ce.0 \
+        gitlab-ce=18.11.3-ce.0
+
+# Create the final repository structure and generate apt indexes
+WORKDIR /opt/offline-repo
+RUN cp /var/cache/apt/archives/*.deb . && \
+    apt-ftparchive packages . > Packages && \
+    gzip -9c Packages > Packages.gz && \
+    apt-ftparchive release . > Release
+
+# =========================================================
+# Stage 2: Create the lightweight web server image
+# =========================================================
+FROM nginx:alpine
+
+# Copy the generated repository from the builder stage to Nginx web root
+COPY --from=builder /opt/offline-repo /usr/share/nginx/html/ubuntu
+
+# Expose HTTP port
+EXPOSE 80
