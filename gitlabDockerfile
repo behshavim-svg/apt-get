@@ -21,13 +21,12 @@ RUN curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/s
 # Download specific GitLab CE versions required for the upgrade path
 # Using --download-only to cache the .deb files without installing them
 RUN apt-get update && \
-    apt-get install --download-only gitlab-ce=17.8.7-ce.0 -y && \
-    apt-get install --download-only gitlab-ce=17.11.7-ce.0 -y && \
-    apt-get install --download-only gitlab-ce=18.2.8-ce.0 -y
-
-#        gitlab-ce=18.5.5-ce.0 \
-#        gitlab-ce=18.8.9-ce.0 \
-#        gitlab-ce=18.11.3-ce.0
+#    apt-get install --download-only gitlab-ce=17.8.7-ce.0 -y && \
+#    apt-get install --download-only gitlab-ce=17.11.7-ce.0 -y && \
+#    apt-get install --download-only gitlab-ce=18.2.8-ce.0 -y
+    apt-get install --download-only gitlab-ce=18.5.5-ce.0 -y && \
+    apt-get install --download-only gitlab-ce=18.8.9-ce.0 -y && \
+    apt-get install --download-only gitlab-ce=18.11.3-ce.0 -y
 
 # Create the final repository structure and generate apt indexes
 WORKDIR /opt/offline-repo
