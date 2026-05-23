@@ -31,7 +31,7 @@ jobs:
       - name: Split Image File
         run: |
           mkdir -p chunks
-          split -b 25M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
+          split -b 20M gitlab-mirror.tar chunks/gitlab-mirror.tar.part_
 
       - name: Upload All Chunks to Bale
         env:
