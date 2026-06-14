@@ -20,16 +20,15 @@ RUN mkdir -p -m 0755 /etc/apt/keyrings && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu resolute stable" > /etc/apt/sources.list.d/docker.list
 
-RUN curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh"
+# Add official GitLab Runner repository
+RUN curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | os=ubuntu dist=noble bash
+
 # Copy the package list
 WORKDIR /tmp
 COPY packages.txt .
 
 # 1. Update apt repositories
-# 2. Download Core Ubuntu 26.04 OS metapackages (this guarantees new dependencies like python3.14 are fetched)
-# 3. Download Docker CE packages and Kernel updates
-# 4. Iterate through packages.txt. It will naturally fetch the 26.04 versions for unchanged package names (e.g., 'nginx').
-#    If a 24.04 specific package name is not found, it gracefully skips it without breaking the build.
+# 2. Download Core Ubuntu metapackages and additional tools
 RUN apt-get update && \
     apt-get install --download-only -y \
         ubuntu-server \
@@ -38,16 +37,23 @@ RUN apt-get update && \
         linux-headers-virtual \
         docker-ce \
         docker-ce-cli \
-        containerd.io && \
+        containerd.io \
         gitlab-runner && \
     while read -r package; do \
-        apt-get install --download-only -y "$package" || echo "Skipping $package: Not found in 26.04 repos, likely replaced or deprecated."; \
+        apt-get install --download-only -y "$package" || echo "Skipping $package"; \
     done < packages.txt
 
-# Create the final repository structure and generate indexes
+# Create the final repository structure
 WORKDIR /opt/offline-repo
+
+# 3. CRITICAL FIX: Download the actual .deb files for ALL packages already installed in the base image (like libc6, systemd)
 RUN cp /var/cache/apt/archives/*.deb . && \
-    apt-ftparchive packages . > Packages && \
+    dpkg-query -f '${binary:Package}\n' -W | while read -r pkg; do \
+        apt-get download "$pkg" 2>/dev/null || true; \
+    done
+
+# 4. Generate indexes
+RUN apt-ftparchive packages . > Packages && \
     gzip -9c Packages > Packages.gz && \
     apt-ftparchive release . > Release
 
