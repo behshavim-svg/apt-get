@@ -14,13 +14,13 @@ RUN apt-get update && apt-get install -y \
     apt-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up official Docker upstream repository GPG key and sources list
-# FIXED: Removed the invalid '-d' option from mkdir
+# Set up official Docker upstream repository GPG key and sources list for Ubuntu 26.04 (Resolute)
 RUN mkdir -p -m 0755 /etc/apt/keyrings && \
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu resolute stable" > /etc/apt/sources.list.d/docker.list
 
+RUN curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh"
 # Copy the package list
 WORKDIR /tmp
 COPY packages.txt .
@@ -39,6 +39,7 @@ RUN apt-get update && \
         docker-ce \
         docker-ce-cli \
         containerd.io && \
+        gitlab-runner && \
     while read -r package; do \
         apt-get install --download-only -y "$package" || echo "Skipping $package: Not found in 26.04 repos, likely replaced or deprecated."; \
     done < packages.txt
@@ -57,6 +58,12 @@ FROM nginx:alpine
 
 # Copy the generated repository from builder stage to Nginx web root
 COPY --from=builder /opt/offline-repo /usr/share/nginx/html/ubuntu
+
+RUN chmod -R 755 /usr/share/nginx/html/ubuntu
+
+# 2. Create a custom Nginx configuration to enable autoindex in a single line
+RUN rm /etc/nginx/conf.d/default.conf && \
+    echo "server { listen 80; server_name localhost; location / { root /usr/share/nginx/html; autoindex on; autoindex_exact_size off; autoindex_localtime on; } }" > /etc/nginx/conf.d/default.conf
 
 # Expose HTTP port
 EXPOSE 80
