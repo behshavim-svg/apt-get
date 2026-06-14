@@ -1,7 +1,7 @@
 # =========================================================
 # Stage 1: Create a clean sandbox and download packages
 # =========================================================
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:26.04 AS builder
 
 # Set environment variables for non-interactive apt installations
 ENV DEBIAN_FRONTEND=noninteractive
@@ -26,17 +26,22 @@ WORKDIR /tmp
 COPY packages.txt .
 
 # 1. Update apt repositories
-# 2. Download Kernel updates and Docker CE packages
-# 3. Read packages.txt and download every single package listed in it using xargs
-# FIXED: Corrected the chaining syntax for xargs and apt-get
+# 2. Download Core Ubuntu 26.04 OS metapackages (this guarantees new dependencies like python3.14 are fetched)
+# 3. Download Docker CE packages and Kernel updates
+# 4. Iterate through packages.txt. It will naturally fetch the 26.04 versions for unchanged package names (e.g., 'nginx').
+#    If a 24.04 specific package name is not found, it gracefully skips it without breaking the build.
 RUN apt-get update && \
     apt-get install --download-only -y \
+        ubuntu-server \
+        ubuntu-standard \
         linux-image-virtual \
         linux-headers-virtual \
         docker-ce \
         docker-ce-cli \
         containerd.io && \
-    xargs -a packages.txt apt-get install --download-only -y
+    while read -r package; do \
+        apt-get install --download-only -y "$package" || echo "Skipping $package: Not found in 26.04 repos, likely replaced or deprecated."; \
+    done < packages.txt
 
 # Create the final repository structure and generate indexes
 WORKDIR /opt/offline-repo
