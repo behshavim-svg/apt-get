@@ -56,6 +56,8 @@ RUN cp /var/cache/apt/archives/*.deb . && \
 RUN apt-ftparchive packages . > Packages && \
     gzip -9c Packages > Packages.gz && \
     apt-ftparchive release . > Release
+    
+RUN chmod -R 755 /opt/offline-repo
 
 # =========================================================
 # Stage 2: Create the lightweight web server image
@@ -64,8 +66,6 @@ FROM nginx:alpine
 
 # Copy the generated repository from builder stage to Nginx web root
 COPY --from=builder /opt/offline-repo /usr/share/nginx/html/ubuntu
-
-RUN chmod -R 755 /usr/share/nginx/html/ubuntu
 
 # 2. Create a custom Nginx configuration to enable autoindex in a single line
 RUN rm /etc/nginx/conf.d/default.conf && \
